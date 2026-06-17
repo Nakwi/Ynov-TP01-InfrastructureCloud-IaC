@@ -43,7 +43,7 @@ variable "vmname" {
 }
 
 variable "vmID" {
-  type = integer
+  type = number
 }
 
 variable "vmIP" {
