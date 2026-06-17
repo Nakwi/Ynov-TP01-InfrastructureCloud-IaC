@@ -3,6 +3,8 @@
 hostname: web
 fqdn: web.local
 
+timezone: Europe/Paris
+
 package_update: true
 package_upgrade: true
 
