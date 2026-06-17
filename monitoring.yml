@@ -1,0 +1,44 @@
+#cloud-config
+
+hostname: monitoring
+fqdn: monitoring.local
+
+package_update: true
+package_upgrade: true
+
+users:
+  - name: admincloud
+    groups: sudo,docker
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+
+packages:
+  - curl
+  - wget
+  - git
+  - vim
+  - htop
+  - unzip
+  - python3
+  - python3-apt
+  - python3-pip
+  - docker.io
+  - python3-docker
+
+write_files:
+  - path: /opt/cloud-init-monitoring-info.txt
+    permissions: "0644"
+    owner: root:root
+    content: |
+      VM monitoring initialisée par cloud-init.
+      Paquets installés : Python, outils de base, Docker.
+      Uptime Kuma sera installé et configuré avec Ansible.
+
+runcmd:
+  - echo "cloud-init terminé sur la VM monitoring le $(date)" > /var/log/tp-cloud-init-monitoring.log
+  - touch /opt/cloud-init-monitoring-ok
+
+final_message: "Cloud-init terminé sur la VM monitoring après $UPTIME secondes"
