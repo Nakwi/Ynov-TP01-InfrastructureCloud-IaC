@@ -56,9 +56,9 @@ def proxmox():
         print("Execution de Terraform")
         os.system("terraform init")
         con1 = input("Continue ? (Y/n) : ")
-        if con1 == "y" and con1 == "Y" and con1 == "":
+        if con1 == "y" or con1 == "Y" or con1 == "":
             break
-        elif con1 == "n" and con1 == "N":
+        elif con1 == "n" or con1 == "N":
             sys.exit(1)
         else:
             print("Choix incorrect")
@@ -66,9 +66,9 @@ def proxmox():
     while True:
         os.system("terraform fmt")
         con2 = input("Continue ? (Y/n) : ")
-        if con2 == "y" and con2 == "Y" and con2 == "":
+        if con2 == "y" or con2 == "Y" or con2 == "":
             break
-        elif con2 == "n" and con2 == "N":
+        elif con2 == "n" or con2 == "N":
             sys.exit(2)
         else:
             print("Choix incorrect")
@@ -76,9 +76,9 @@ def proxmox():
     while True:
         os.system("terraform validate")
         con3 = input("Continue ? (Y/n) : ")
-        if con3 == "y" and con3 == "Y" and con3 == "":
+        if con3 == "y" or con3 == "Y" or con3 == "":
             break
-        elif con3 == "n" and con3 == "N":
+        elif con3 == "n" or con3 == "N":
             sys.exit(3)
         else:
             print("Choix incorrect")
@@ -86,9 +86,9 @@ def proxmox():
     while True:
         os.system("terraform plan")
         con4 = input("Continue ? (Y/n) : ")
-        if con4 == "y" and con4 == "Y" and con4 == "":
+        if con4 == "y" or con4 == "Y" or con4 == "":
             break
-        elif con4 == "n" and con4 == "N":
+        elif con4 == "n" or con4 == "N":
             sys.exit(4)
         else:
             print("Choix incorrect")
@@ -96,9 +96,9 @@ def proxmox():
     while True:
         os.system("terraform apply")
         con5 = input("Continue ? (Y/n) : ")
-        if con5 == "y" and con5 == "Y" and con5 == "":
+        if con5 == "y" or con5 == "Y" or con5 == "":
             break
-        elif con5 == "n" and con5 == "N":
+        elif con5 == "n" or con5 == "N":
             sys.exit(5)
         else:
             print("Choix incorrect")
