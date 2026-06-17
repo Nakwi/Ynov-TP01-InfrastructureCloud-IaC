@@ -31,7 +31,7 @@ variable "memory" {
 }
 
 variable "disk_size" {
-  default = "32G"
+  default = 32
 }
 
 variable "ssh_public_key" {

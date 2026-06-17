@@ -1,15 +1,16 @@
 resource "proxmox_virtual_environment_vm" "vm" {
-  name      = var.vmname
-  node_name = var.target_node
-  vm_id     = var.vmID
+  name      = var.vmname # Nom de la nouvelle VM
+  node_name = var.target_node # Noeud de destination de la VM
+  vm_id     = var.vmID # ID de la nouvelle VM
 
   clone {
-    vm_id   = var.template_vmid  # bpg requiert un ID numérique
-    full    = true
+    vm_id   = 8004 #ID de la template
+    full    = true # Type de clone
+    datastore_id = "local-zfs"  # force la destination du clone
   }
 
   agent {
-    enabled = true
+    enabled = true # QEMU Guest agent
   }
 
   cpu {
@@ -20,6 +21,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
 
   memory {
     dedicated = var.memory
+    floating  = var.memory
   }
 
   scsi_hardware = "virtio-scsi-single"
@@ -31,6 +33,12 @@ resource "proxmox_virtual_environment_vm" "vm" {
     file_format  = "raw"
   }
 
+  efi_disk {
+  datastore_id = "local-zfs"
+  file_format  = "raw"
+  type         = "4m"
+}
+
   network_device {
     model  = "virtio"
     bridge = "vmbr0"
@@ -41,6 +49,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
   }
 
   initialization {
+    datastore_id = "local-zfs"
     ip_config {
       ipv4 {
         address = var.vmIP   # format attendu : "192.168.1.10/24"
@@ -55,5 +64,6 @@ resource "proxmox_virtual_environment_vm" "vm" {
   }
 
   boot_order       = ["scsi0"]
-  reboot_on_change = true
+  bios = "ovmf"
+  machine = "q35"
 }
