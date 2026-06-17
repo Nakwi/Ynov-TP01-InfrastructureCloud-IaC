@@ -47,10 +47,10 @@ def proxmox():
 
     print("Application des variables")
     with open('./Terraform/proxmox/tmp.auto.tfvars', 'w') as f:
-        f.write(f"vmname = {vm_name}")
-        f.write(f"vmID = {vm_ID}")
-        f.write(f"vmIP = {vm_IP}")
-        f.write(f"vmGW = {vm_GW}")
+        f.write(f"""vmname = {vm_name}
+vmID = {vm_ID}
+vmIP = {vm_IP}
+vmGW = {vm_GW}""")
     
     while True:
         print("Execution de Terraform")
