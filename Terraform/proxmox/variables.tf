@@ -1,19 +1,17 @@
 variable "pm_api_url" {
-  default = "pve03.nemealan.fr"
+  type = string
 }
-variable "pm_api_token_id" {}
-variable "pm_api_token_secret" {}
+variable "pm_api_token_id" {
+  type = string
+  sensitive = true
+}
+variable "pm_api_token_secret" {
+  type = string
+  sensitive = true
+}
 
 variable "target_node" {
   default = "pve03"
-}
-
-variable "vm_name" {
-  default = "ynov-cloud-vm01"
-}
-
-variable "vm_id" {
-  default = 200
 }
 
 variable "template_name" {
@@ -24,6 +22,10 @@ variable "cores" {
   default = 2
 }
 
+variable "sockets" {
+  default = 1
+}
+
 variable "memory" {
   default = 2048
 }
@@ -32,8 +34,12 @@ variable "disk_size" {
   default = "32G"
 }
 
-variable "ip_address" {
-  default = "192.168.10.100/24"
+variable "ip_1" {
+  default = "192.168.10.64/24"
+}
+
+variable "ip_2" {
+  default = "192.168.10.65/24"
 }
 
 variable "gateway" {
@@ -41,5 +47,5 @@ variable "gateway" {
 }
 
 variable "ssh_public_key" {
-  default = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAG3iBJV8oS0IipL3EfRGrysOU0Iyauc0LBmkZAlBmQ"
+  type = string
 }

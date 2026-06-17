@@ -1,8 +1,10 @@
 # Introduction
 
-1. Structure du dossier Terraform
+# 1. Structure du dossier Terraform
 
 Terraform/
+├───main.ps1
+├───main.py
 ├───azure/
 |   └───azure.tf
 └───proxmox/
@@ -11,11 +13,15 @@ Terraform/
     ├───terraform.tfvars
     └───variables.tf
 
-2. Que fait Terraform?
+
+
+
+
+# 2. Que fait Terraform?
 
 Terraform va créer une VM a partir d'une template pré-existante. Terraform n'est pas capable de créer une VM de rien il faut donc une template avant obligatoirement.
 
-3. Commandes
+# 3. Commandes
 
 ```bash
 # Initialisation du Terraform

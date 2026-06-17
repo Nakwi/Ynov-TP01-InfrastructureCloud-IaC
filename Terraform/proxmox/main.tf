@@ -1,21 +1,21 @@
 resource "proxmox_vm_qemu" "vm" {
 
-  name        = var.vm_name
+  name        = INTERACTIF
   target_node = var.target_node
-  vmid        = var.vm_id
+  vmid        = INTERACTIF
 
   clone = var.template_name
 
   agent = 1
 
   cores  = var.cores
-  sockets = 1
+  sockets = var.sockets
   memory = var.memory
 
   scsihw = "virtio-scsi-single"
 
   cpu {
-    type = "host"
+    type = "x86-64-v3"
   }
 
   disk {
@@ -33,11 +33,11 @@ resource "proxmox_vm_qemu" "vm" {
 
   os_type = "cloud-init"
 
-  ipconfig0 = "ip=${var.ip_address},gw=${var.gateway}"
+  ipconfig0 = "ip=${var.ip_1},gw=${var.gateway}"
 
   sshkeys = var.ssh_public_key
 
-  ciuser = "ubuntu"
+  ciuser = "debian"
 
   boot = "order=scsi0"
 
