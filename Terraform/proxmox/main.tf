@@ -60,7 +60,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
       username = "debian"
       keys     = [var.ssh_public_key]
     }
-    user_data_file_id = "local:snippets/web.yml"
+    user_data_file_id = "local:./Terraform/cloud-init/web.yaml"
   }
 
   boot_order       = ["scsi0"]
