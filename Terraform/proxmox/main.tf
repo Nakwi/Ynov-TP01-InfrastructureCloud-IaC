@@ -1,8 +1,8 @@
 resource "proxmox_vm_qemu" "vm" {
 
-  name        = INTERACTIF
+  name        = var.vmname
   target_node = var.target_node
-  vmid        = INTERACTIF
+  vmid        = var.vmID
 
   clone = var.template_name
 
@@ -32,8 +32,9 @@ resource "proxmox_vm_qemu" "vm" {
   }
 
   os_type = "cloud-init"
-
-  ipconfig0 = "ip=${var.ip_1},gw=${var.gateway}"
+  cicustom = "user=local:snippets/web.yml"
+  
+  ipconfig0 = "ip=${var.vmIP},gw=${var.vmGW}"
 
   sshkeys = var.ssh_public_key
 
