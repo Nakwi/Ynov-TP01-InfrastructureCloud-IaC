@@ -1,0 +1,30 @@
+- name: Vérifier que cloud-init monitoring est terminé
+  stat:
+    path: /opt/cloud-init-monitoring-ok
+  register: cloudinit_monitoring
+
+- name: Arrêter si cloud-init monitoring n'est pas terminé
+  fail:
+    msg: "Cloud-init n'est pas encore terminé sur la VM monitoring."
+  when: not cloudinit_monitoring.stat.exists
+
+- name: Vérifier que Docker est actif
+  service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Créer le volume Uptime Kuma
+  community.docker.docker_volume:
+    name: uptime-kuma
+
+- name: Lancer Uptime Kuma
+  community.docker.docker_container:
+    name: uptime-kuma
+    image: louislam/uptime-kuma:1
+    state: started
+    restart_policy: always
+    ports:
+      - "3001:3001"
+    volumes:
+      - uptime-kuma:/app/data
