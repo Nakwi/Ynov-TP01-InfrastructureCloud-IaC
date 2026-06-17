@@ -1,13 +1,15 @@
-variable "pm_api_url" {}
+variable "pm_api_url" {
+  default = "pve03.nemealan.fr"
+}
 variable "pm_api_token_id" {}
 variable "pm_api_token_secret" {}
 
 variable "target_node" {
-  default = "pve"
+  default = "pve03"
 }
 
 variable "vm_name" {
-  default = "terraform-vm"
+  default = "ynov-cloud-vm01"
 }
 
 variable "vm_id" {
@@ -15,7 +17,7 @@ variable "vm_id" {
 }
 
 variable "template_name" {
-  default = "ubuntu-24.04-template"
+  default = "ynov-debian13-template"
 }
 
 variable "cores" {
@@ -23,7 +25,7 @@ variable "cores" {
 }
 
 variable "memory" {
-  default = 4096
+  default = 2048
 }
 
 variable "disk_size" {
@@ -31,11 +33,13 @@ variable "disk_size" {
 }
 
 variable "ip_address" {
-  default = "192.168.1.100/24"
+  default = "192.168.10.100/24"
 }
 
 variable "gateway" {
-  default = "192.168.1.1"
+  default = "192.168.10.254"
 }
 
-variable "ssh_public_key" {}
+variable "ssh_public_key" {
+  default = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAG3iBJV8oS0IipL3EfRGrysOU0Iyauc0LBmkZAlBmQ"
+}
