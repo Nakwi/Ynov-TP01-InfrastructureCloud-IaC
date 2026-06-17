@@ -37,3 +37,19 @@ variable "disk_size" {
 variable "ssh_public_key" {
   type = string
 }
+
+variable "vmname" {
+  type = string
+}
+
+variable "vmID" {
+  type = integer
+}
+
+variable "vmIP" {
+  type = string
+}
+
+variable "vmGW" {
+  type = string
+}
