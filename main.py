@@ -37,10 +37,10 @@ def proxmox():
     print("Lancement du module Proxmox")
     print("Insérez vos variables pour la VM créée : ")
 
-    vm_name = input("Nom de la VM")
-    vm_ID = int(input("ID de la VM"))
-    vm_IP = input("IP de la VM")
-    vm_GW = input("Passerellle de la VM")
+    vm_name = input("Nom de la VM : ")
+    vm_ID = int(input("ID de la VM : "))
+    vm_IP = input("IP de la VM : ")
+    vm_GW = input("Passerellle de la VM : ")
 
     print("Création du fichier tmp.auto.tfvars")
     os.system("touch .Terraform/proxmox/tmp.auto.tfvars")
@@ -55,7 +55,7 @@ def proxmox():
     while True:
         print("Execution de Terraform")
         os.system("terraform init")
-        con1 = input("Continue ? (Y/n)")
+        con1 = input("Continue ? (Y/n) : ")
         if con1 == "y" and con1 == "Y" and con1 == "":
             break
         elif con1 == "n" and con1 == "N":
@@ -65,7 +65,7 @@ def proxmox():
     
     while True:
         os.system("terraform fmt")
-        con2 = input("Continue ? (Y/n)")
+        con2 = input("Continue ? (Y/n) : ")
         if con2 == "y" and con2 == "Y" and con2 == "":
             break
         elif con2 == "n" and con2 == "N":
@@ -75,7 +75,7 @@ def proxmox():
     
     while True:
         os.system("terraform validate")
-        con3 = input("Continue ? (Y/n)")
+        con3 = input("Continue ? (Y/n) : ")
         if con3 == "y" and con3 == "Y" and con3 == "":
             break
         elif con3 == "n" and con3 == "N":
@@ -85,7 +85,7 @@ def proxmox():
 
     while True:
         os.system("terraform plan")
-        con4 = input("Continue ? (Y/n)")
+        con4 = input("Continue ? (Y/n) : ")
         if con4 == "y" and con4 == "Y" and con4 == "":
             break
         elif con4 == "n" and con4 == "N":
@@ -95,7 +95,7 @@ def proxmox():
 
     while True:
         os.system("terraform apply")
-        con5 = input("Continue ? (Y/n)")
+        con5 = input("Continue ? (Y/n) : ")
         if con5 == "y" and con5 == "Y" and con5 == "":
             break
         elif con5 == "n" and con5 == "N":
