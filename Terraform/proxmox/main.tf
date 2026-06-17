@@ -1,48 +1,59 @@
-resource "proxmox_vm_qemu" "vm" {
+resource "proxmox_virtual_environment_vm" "vm" {
+  name      = var.vmname
+  node_name = var.target_node
+  vm_id     = var.vmID
 
-  name        = var.vmname
-  target_node = var.target_node
-  vmid        = var.vmID
+  clone {
+    vm_id   = var.template_vmid  # bpg requiert un ID numérique
+    full    = true
+  }
 
-  clone = var.template_name
+  agent {
+    enabled = true
+  }
 
-  agent = 1
+  cpu {
+    cores   = var.cores
+    sockets = var.sockets
+    type    = "x86-64-v3"
+  }
 
-  cores  = var.cores
-  sockets = var.sockets
-  memory = var.memory
+  memory {
+    dedicated = var.memory
+  }
 
-  scsihw = "virtio-scsi-single"
+  scsi_hardware = "virtio-scsi-single"
 
-  cpu = "x86-64-v3"
+  disk {
+    datastore_id = "local-zfs"
+    interface    = "scsi0"
+    size         = var.disk_size
+    file_format  = "raw"
+  }
 
-disks {
-  scsi {
-    scsi0 {
-      disk {
-        size    = var.disk_size
-        storage = "local-zfs"
+  network_device {
+    model  = "virtio"
+    bridge = "vmbr0"
+  }
+
+  operating_system {
+    type = "l26"
+  }
+
+  initialization {
+    ip_config {
+      ipv4 {
+        address = var.vmIP   # format attendu : "192.168.1.10/24"
+        gateway = var.vmGW
       }
     }
+    user_account {
+      username = "debian"
+      keys     = [var.ssh_public_key]
+    }
+    user_data_file_id = "local:snippets/web.yml"
   }
-}
 
-network {
-  model  = "virtio"
-  bridge = "vmbr0"
-}
-
-  os_type = "l26"   # manquant
-
-  cicustom = "user=local:snippets/web.yml"
-  
-  ipconfig0 = "ip=${var.vmIP},gw=${var.vmGW}"
-
-  sshkeys = var.ssh_public_key
-
-  ciuser = "debian"
-
-  boot = "order=scsi0"
-
-  automatic_reboot = true
+  boot_order       = ["scsi0"]
+  reboot_on_change = true
 }

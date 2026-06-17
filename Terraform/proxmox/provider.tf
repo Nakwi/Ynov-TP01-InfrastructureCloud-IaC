@@ -3,17 +3,14 @@
 terraform {
   required_providers {
     proxmox = {
-      source  = "Telmate/proxmox"
-      # version = "3.0.1-rc3" Downgrade car instable sur PVE 9.x
-      version = "2.9.14" 
+      source  = "bpg/proxmox"
+      version = "~> 0.109"
     }
   }
 }
 
 provider "proxmox" {
-  pm_api_url      = var.pm_api_url
-  pm_api_token_id = var.pm_api_token_id
-  pm_api_token_secret = var.pm_api_token_secret
-
-  pm_tls_insecure = true
+  endpoint  = var.pm_api_url        # ex: "https://192.168.1.10:8006/"
+  api_token = "${var.pm_api_token_id}=${var.pm_api_token_secret}"
+  insecure  = true
 }
