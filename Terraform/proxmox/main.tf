@@ -14,24 +14,26 @@ resource "proxmox_vm_qemu" "vm" {
 
   scsihw = "virtio-scsi-single"
 
-  cpu {
-    type = "x86-64-v3"
-  }
+  cpu = "x86-64-v3"
 
-  disk {
-    slot    = "scsi0"
-    size    = var.disk_size
-    type    = "disk"
-    storage = "local-zfs"
+disks {
+  scsi {
+    scsi0 {
+      disk {
+        size    = var.disk_size
+        storage = "local-zfs"
+      }
+    }
   }
+}
 
-  network {
-    id     = 0
-    model  = "virtio"
-    bridge = "vmbr0"
-  }
+network {
+  model  = "virtio"
+  bridge = "vmbr0"
+}
 
-  os_type = "cloud-init"
+  os_type = "l26"   # manquant
+
   cicustom = "user=local:snippets/web.yml"
   
   ipconfig0 = "ip=${var.vmIP},gw=${var.vmGW}"
