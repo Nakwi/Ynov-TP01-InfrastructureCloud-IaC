@@ -43,10 +43,10 @@ def proxmox():
     vm_GW = input("Passerellle de la VM : ")
 
     print("Création du fichier tmp.auto.tfvars")
-    os.system("touch .Terraform/proxmox/tmp.auto.tfvars")
+    os.system("touch ./Terraform/proxmox/tmp.auto.tfvars")
 
     print("Application des variables")
-    with open('.Terraform/proxmox/tmp.auto.tfvars', 'w') as f:
+    with open('./Terraform/proxmox/tmp.auto.tfvars', 'w') as f:
         f.write(f"vmname = {vm_name}")
         f.write(f"vmID = {vm_ID}")
         f.write(f"vmIP = {vm_IP}")
