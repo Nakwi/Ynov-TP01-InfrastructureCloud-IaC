@@ -54,7 +54,7 @@ def proxmox():
     
     while True:
         print("Execution de Terraform")
-        os.system("terraform init")
+        os.system("terraform -chdir=./Terraform/proxmox init")
         con1 = input("Continue ? (Y/n) : ")
         if con1 == "y" or con1 == "Y" or con1 == "":
             break
@@ -64,7 +64,7 @@ def proxmox():
             print("Choix incorrect")
     
     while True:
-        os.system("terraform fmt")
+        os.system("terraform -chdir=./Terraform/proxmox fmt")
         con2 = input("Continue ? (Y/n) : ")
         if con2 == "y" or con2 == "Y" or con2 == "":
             break
@@ -74,7 +74,7 @@ def proxmox():
             print("Choix incorrect")
     
     while True:
-        os.system("terraform validate")
+        os.system("terraform -chdir=./Terraform/proxmox validate")
         con3 = input("Continue ? (Y/n) : ")
         if con3 == "y" or con3 == "Y" or con3 == "":
             break
@@ -84,7 +84,7 @@ def proxmox():
             print("Choix incorrect")
 
     while True:
-        os.system("terraform plan")
+        os.system("terraform -chdir=./Terraform/proxmox plan")
         con4 = input("Continue ? (Y/n) : ")
         if con4 == "y" or con4 == "Y" or con4 == "":
             break
@@ -94,7 +94,7 @@ def proxmox():
             print("Choix incorrect")
 
     while True:
-        os.system("terraform apply")
+        os.system("terraform -chdir=./Terraform/proxmox apply")
         con5 = input("Continue ? (Y/n) : ")
         if con5 == "y" or con5 == "Y" or con5 == "":
             break
