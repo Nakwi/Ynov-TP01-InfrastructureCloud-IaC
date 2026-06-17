@@ -4,7 +4,8 @@ terraform {
   required_providers {
     proxmox = {
       source  = "Telmate/proxmox"
-      version = "3.0.1-rc3"
+      # version = "3.0.1-rc3" Downgrade car instable sur PVE 9.x
+      version = "2.9.14" 
     }
   }
 }
