@@ -1,0 +1,30 @@
+- name: Vérifier que cloud-init web est terminé
+  stat:
+    path: /opt/cloud-init-web-ok
+  register: cloudinit_web
+
+- name: Arrêter si cloud-init web n'est pas terminé
+  fail:
+    msg: "Cloud-init n'est pas encore terminé sur la VM web."
+  when: not cloudinit_web.stat.exists
+
+- name: Configurer la page d'accueil Nginx
+  copy:
+    dest: /var/www/html/index.html
+    content: |
+      <html>
+        <body>
+          <h1>Serveur Web configuré avec Ansible</h1>
+          <p>Nginx a été installé par cloud-init.</p>
+          <p>La configuration a été appliquée par Ansible.</p>
+        </body>
+      </html>
+    owner: www-data
+    group: www-data
+    mode: '0644'
+
+- name: Vérifier que Nginx est actif
+  service:
+    name: nginx
+    state: started
+    enabled: true
