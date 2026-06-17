@@ -19,7 +19,6 @@ packages:
   - curl
   - wget
   - git
-  - vim
   - htop
   - unzip
   - python3
