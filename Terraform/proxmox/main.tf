@@ -42,5 +42,5 @@ resource "proxmox_vm_qemu" "vm" {
 
   boot = "order=scsi0"
 
-  automatic_reboot = tru
+  automatic_reboot = true
 }
