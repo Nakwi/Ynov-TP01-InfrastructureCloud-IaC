@@ -1,0 +1,11 @@
+- name: Configurer la VM web
+  hosts: web
+  become: true
+  roles:
+    - web
+
+- name: Configurer la VM monitoring
+  hosts: monitoring
+  become: true
+  roles:
+    - monitoring
