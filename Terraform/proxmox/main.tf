@@ -60,10 +60,10 @@ resource "proxmox_virtual_environment_vm" "vm" {
       username = "debian"
       keys     = [var.ssh_public_key]
     }
-    user_data_file_id = "local:./Terraform/cloud-init/web.yaml"
+    user_data_file_id = "local:./cloud-init/web.yaml"
   }
 
-  boot_order       = ["scsi0"]
+  boot_order = ["scsi0"]
   bios = "ovmf"
   machine = "q35"
 }
