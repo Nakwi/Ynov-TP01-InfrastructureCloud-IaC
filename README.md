@@ -3,6 +3,7 @@ TP fil rouge M1 — Déploiement automatisé d'une infrastructure web reproducti
 
 Ansible - arboresence a réaliser
 
+```
 /home
 ├── inventory.ini
 ├── playbook.yml
@@ -13,6 +14,7 @@ Ansible - arboresence a réaliser
     └── monitoring/
         └── tasks/
             └── main.yml
+```
 
 commande a executer : 
 ansible-playbook -i inventaire.ini playbook.yml
