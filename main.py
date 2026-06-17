@@ -1,6 +1,6 @@
 # Lancement du Terraform
 
-# Choix pour Azure ou Proxmox
+# Choix pour azure ou Proxmox
 
 import sys
 import os
