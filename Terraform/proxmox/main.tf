@@ -4,7 +4,7 @@ resource "proxmox_virtual_environment_file" "cloud_init" {
   node_name    = var.target_node
 
   source_file {
-    path = "./cloud-init/web.yaml"
+    path = "${path.module}/../../cloud-init/web.yaml"
   }
 }
 
