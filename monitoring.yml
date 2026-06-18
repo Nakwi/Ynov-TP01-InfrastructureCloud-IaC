@@ -13,7 +13,8 @@ users:
     groups: sudo
     shell: /bin/bash
     sudo: "ALL=(ALL) NOPASSWD:ALL"
-    lock_passwd: true
+    lock_passwd: false
+    passwd: '$6$lJSrnnQcBAtZcYyo$rAYkVdYEflpl8lmZ9lZLT4qpNkV879xwNUan4Nec/ox.mdA3L5NeNQwug.uX6n.pw72aI887UkVrVQ9Fqp5YF/'
     ssh_authorized_keys:
       - ${ssh_public_key}
 
