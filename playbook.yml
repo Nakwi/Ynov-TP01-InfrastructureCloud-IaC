@@ -1,11 +1,13 @@
 - name: Configurer la VM web
   hosts: web
   become: true
-  roles:
-    - web
+  tasks:
+    - name: Charger les tâches web
+      include_tasks: roles/web/tasks/role_web.yml
 
 - name: Configurer la VM monitoring
   hosts: monitoring
   become: true
-  roles:
-    - monitoring
+  tasks:
+    - name: Charger les tâches monitoring
+      include_tasks: roles/monitoring/tasks/role_monitoring.yml
