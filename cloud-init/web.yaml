@@ -15,7 +15,7 @@ users:
     sudo: "ALL=(ALL) NOPASSWD:ALL"
     lock_passwd: true
     ssh_authorized_keys:
-      - ${ssh_public_key}
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAG3iBJV8oS0IipL3EfRGrysOU0Iyauc0LBmkZAlBmQ"
 
 ssh_pwauth: false
 
