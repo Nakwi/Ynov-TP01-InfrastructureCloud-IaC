@@ -45,6 +45,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
   network_device {
     model  = "virtio"
     bridge = "vmbr0"
+    vlan_id  = 10
   }
 
   operating_system {
@@ -54,6 +55,10 @@ resource "proxmox_virtual_environment_vm" "vm" {
   initialization {
     datastore_id = "local-zfs"
     user_data_file_id = "local:snippets/ynov-web.yaml"
+    content {
+        domain  = "local"
+        servers = "192.168.77.250"
+    }
     ip_config {
       ipv4 {
         address = var.vmIP   # format attendu : "192.168.1.10/24"
