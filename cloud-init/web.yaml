@@ -15,7 +15,7 @@ users:
     sudo: "ALL=(ALL) NOPASSWD:ALL"
     lock_passwd: true
     ssh_authorized_keys:
-      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAG3iBJV8oS0IipL3EfRGrysOU0Iyauc0LBmkZAlBmQ"
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKuX/f8M4mXIReDRZr3u4FAE7n0xpstvIWFb4mdXd7L3 norma@NORMAN2020"
 
 ssh_pwauth: false
 

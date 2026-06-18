@@ -1,13 +1,3 @@
-resource "proxmox_virtual_environment_file" "cloud_init" {
-  content_type = "snippets"
-  datastore_id = "local"
-  node_name    = var.target_node
-
-  source_file {
-    path = "${path.module}/../../cloud-init/web.yaml"
-  }
-}
-
 resource "proxmox_virtual_environment_vm" "vm" {
   name      = var.vmname # Nom de la nouvelle VM
   node_name = var.target_node # Noeud de destination de la VM
