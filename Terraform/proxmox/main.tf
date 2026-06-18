@@ -55,7 +55,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
   initialization {
     datastore_id = "local-zfs"
     user_data_file_id = "local:snippets/ynov-web.yaml"
-    content {
+    dns {
         domain  = "local"
         servers = "192.168.77.250"
     }
