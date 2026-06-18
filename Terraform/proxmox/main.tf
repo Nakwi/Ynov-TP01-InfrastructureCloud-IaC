@@ -68,7 +68,6 @@ resource "proxmox_virtual_environment_vm" "vm" {
     }
   }
 
-  user_data_file_id = "local:./cloud-init/web.yaml"
   boot_order = ["scsi0"]
   bios = "ovmf"
   machine = "q35"
