@@ -3,7 +3,7 @@
 
 The script intentionally uses only the Python standard library plus external
 commands already needed by the project: terraform, ssh, ssh-keygen, and
-optionally ansible-playbook on Linux.
+optionally ansible-playbook on Linux or Debian WSL from Windows.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ STACKS = {
 ANSIBLE_DIR = ROOT / "ansible"
 ANSIBLE_INVENTORY = ANSIBLE_DIR / "inventaire.ini"
 ANSIBLE_PLAYBOOK = ANSIBLE_DIR / "playbook.yaml"
+WSL_DISTRO = "Debian"
 
 
 def info(message: str) -> None:
@@ -41,13 +42,18 @@ def ask(prompt: str, default: str | None = None) -> str:
     return value or (default or "")
 
 
+def is_exit_choice(value: str) -> bool:
+    return value.strip().lower() in ("0", "q", "quit", "exit")
+
+
 def ask_yes_no(prompt: str, default: bool = False) -> bool:
     suffix = "[Y/n]" if default else "[y/N]"
-    value = input(f"{prompt} {suffix}: ").strip().lower()
+    value = input(f"{prompt} {suffix} (0/q pour quitter): ").strip().lower()
+    if is_exit_choice(value):
+        raise SystemExit(0)
     if not value:
         return default
     return value.startswith("y") or value.startswith("o")
-
 
 def require_command(name: str) -> None:
     if shutil.which(name) is None:
@@ -95,6 +101,107 @@ def run_capture(args: list[str], cwd: Path | None = None, check: bool = True, ec
 
 def expand_user(path: str) -> Path:
     return Path(os.path.expandvars(os.path.expanduser(path))).resolve()
+
+
+def windows_path_to_wsl(path: Path) -> str:
+    text = str(path.resolve())
+    match = re.match(r"^([A-Za-z]):\\(.*)$", text)
+    if not match:
+        return text.replace("\\", "/")
+
+    drive = match.group(1).lower()
+    rest = match.group(2).replace("\\", "/")
+    return f"/mnt/{drive}/{rest}"
+
+
+def wsl_private_key_path(private_key: str) -> str:
+    key = expand_user(private_key)
+    return f"~/.ssh/{key.name}"
+
+
+def run_wsl_bash(
+    command: str,
+    check: bool = True,
+    capture: bool = False,
+    echo_output: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    return run(
+        ["wsl", "-d", WSL_DISTRO, "--", "bash", "-lc", command],
+        check=check,
+        capture=capture,
+        echo_output=echo_output,
+    )
+
+
+def wsl_distros() -> list[str]:
+    if not has_command("wsl"):
+        return []
+
+    output = run_capture(["wsl", "-l", "-q"], check=False, echo_output=False)
+    output = output.replace("\x00", "")
+    return [line.strip() for line in output.splitlines() if line.strip()]
+
+
+def ensure_wsl_debian() -> None:
+    if not has_command("wsl"):
+        print("WSL n'est pas detecte sur ce Windows.")
+        if ask_yes_no("Essayer d'installer WSL2 avec Debian maintenant ?", True):
+            print("Une fenetre PowerShell admin peut s'ouvrir. Accepte l'UAC si Windows le demande.")
+            run([
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -ExecutionPolicy Bypass -Command \"wsl --install -d Debian; Read-Host ''Appuie sur Entree pour fermer''\"'",
+            ])
+            raise RuntimeError(
+                "Relance l'assistant apres l'installation de Debian WSL, et apres redemarrage Windows si demande."
+            )
+        raise RuntimeError("WSL2 + Debian est requis pour lancer Ansible depuis Windows.")
+
+    distros = wsl_distros()
+    if WSL_DISTRO not in distros:
+        print(f"{WSL_DISTRO} WSL n'est pas installe.")
+        if ask_yes_no(f"Installer {WSL_DISTRO} avec WSL maintenant ?", True):
+            run(["wsl", "--install", "-d", WSL_DISTRO])
+            raise RuntimeError(
+                "Relance l'assistant apres l'installation de Debian WSL, et apres redemarrage Windows si demande."
+            )
+        else:
+            raise RuntimeError(f"{WSL_DISTRO} WSL absent.")
+
+    probe = run_wsl_bash("echo ok", check=False, capture=True, echo_output=False)
+    if probe.returncode != 0:
+        raise RuntimeError(
+            "Debian WSL n'est pas encore pret. Ouvre Debian une premiere fois, cree l'utilisateur Linux, puis relance."
+        )
+
+def prepare_wsl_ssh_key(private_key: str) -> str:
+    key = expand_user(private_key)
+    if not key.exists():
+        raise RuntimeError(f"Cle privee introuvable cote Windows: {key}")
+    if not re.match(r"^[A-Za-z0-9._-]+$", key.name):
+        raise RuntimeError("Nom de cle SSH non supporte pour la copie WSL. Utilise un nom simple sans espace.")
+
+    source = windows_path_to_wsl(key)
+    destination = f"~/.ssh/{key.name}"
+    run_wsl_bash(
+        "set -e; "
+        "mkdir -p ~/.ssh; "
+        f"cp {shell_quote(source)} {destination}; "
+        f"chmod 600 {destination}"
+    )
+
+    public_key = Path(str(key) + ".pub")
+    if public_key.exists():
+        public_source = windows_path_to_wsl(public_key)
+        run_wsl_bash(
+            f"cp {shell_quote(public_source)} {destination}.pub && chmod 644 {destination}.pub",
+            check=False,
+        )
+
+    return destination
 
 
 def shell_quote(value: str) -> str:
@@ -197,13 +304,14 @@ def terraform_outputs(stack_name: str) -> dict[str, Any]:
 def choose_control_os() -> str:
     detected = "windows" if platform.system().lower().startswith("win") else "linux"
     while True:
-        value = ask("Systeme de ce PC pour les commandes locales (windows/linux)", detected).lower()
+        value = ask("Systeme de ce PC pour les commandes locales (windows/linux, 0 quitter)", detected).lower()
+        if is_exit_choice(value):
+            raise SystemExit(0)
         if value in ("windows", "linux"):
             if value == "windows":
-                print("Ansible n'est pas compatible comme control node Windows natif. Terraform/SSH restent OK.")
+                print("Ansible Windows natif n'est pas supporte; l'assistant utilisera Debian WSL pour Ansible.")
             return value
-        print("Choisis windows ou linux.")
-
+        print("Choisis windows, linux, ou 0 pour quitter.")
 
 def ensure_ssh_key(private_key: str) -> None:
     require_command("ssh-keygen")
@@ -523,10 +631,10 @@ def azure_ips_from_outputs() -> dict[str, str]:
     return ips
 
 
-def proxmox_ips_for_ansible() -> dict[str, str]:
+def proxmox_ips_for_ansible(private_key_override: str | None = None) -> dict[str, str]:
     stack = STACKS["proxmox"]
     host = ask("IP ou DNS du Proxmox", endpoint_host(stack))
-    private_key = ask("Chemin de la cle SSH privee locale", configured_private_key(stack))
+    private_key = private_key_override or ask("Chemin de la cle SSH privee locale", configured_private_key(stack))
     ids = vm_ids(stack)
 
     info("Tentative via QEMU Guest Agent")
@@ -620,26 +728,96 @@ def install_ansible_linux() -> None:
         run(["ansible-galaxy", "collection", "install", "community.docker"], check=False)
 
 
-def ensure_ansible_supported(control_os: str) -> bool:
+def install_ansible_wsl_debian() -> None:
+    ensure_wsl_debian()
+
+    probe = run_wsl_bash("command -v ansible-playbook", check=False, capture=True, echo_output=False)
+    if probe.returncode == 0:
+        print("Ansible est deja installe dans Debian WSL.")
+        run_wsl_bash("ansible-playbook --version", check=False)
+    else:
+        if not ask_yes_no("Ansible est absent dans Debian WSL. L'installer maintenant ?", True):
+            raise RuntimeError("Ansible absent dans Debian WSL.")
+
+        run_wsl_bash("sudo apt-get update")
+        run_wsl_bash("sudo apt-get install -y ansible openssh-client python3")
+
+    run_wsl_bash("ansible-galaxy collection install community.docker", check=False)
+
+
+def install_or_check_ansible(control_os: str) -> None:
     if control_os == "windows":
-        print("Ansible n'est pas compatible depuis Windows natif comme control node.")
-        print("Tu peux utiliser le reste du script, ou lancer Ansible depuis Linux/WSL separement.")
-        return False
-    return True
+        print("Mode Ansible Windows: execution via Debian WSL.")
+        install_ansible_wsl_debian()
+    else:
+        install_ansible_linux()
 
 
-def generate_ansible_inventory(stack_name: str) -> None:
+def generate_ansible_inventory_for_control(control_os: str, stack_name: str) -> None:
+    if control_os != "windows":
+        generate_ansible_inventory(stack_name)
+        return
+
+    windows_key = ask("Cle privee SSH Windows a utiliser avec Debian WSL", private_key_for_stack(stack_name))
+    wsl_key = wsl_private_key_path(windows_key)
+    print(f"Inventaire prepare pour Debian WSL avec la cle {wsl_key}.")
+    generate_ansible_inventory(
+        stack_name,
+        inventory_private_key=wsl_key,
+        lookup_private_key=windows_key,
+    )
+
+
+def run_ansible_playbook_wsl(stack_name: str) -> None:
+    install_ansible_wsl_debian()
+
+    windows_key = ask("Cle privee SSH Windows a copier dans Debian WSL", private_key_for_stack(stack_name))
+    wsl_key = prepare_wsl_ssh_key(windows_key)
+
+    needs_inventory = (
+        not ANSIBLE_INVENTORY.exists()
+        or inventory_has_placeholders()
+        or get_inventory_private_key() != wsl_key
+    )
+
+    if needs_inventory:
+        print("Inventaire absent, incomplet, ou pas adapte a Debian WSL: generation maintenant.")
+        generate_ansible_inventory(
+            stack_name,
+            inventory_private_key=wsl_key,
+            lookup_private_key=windows_key,
+        )
+    elif ask_yes_no("Regenerer l'inventaire avec les IP actuelles avant Ansible ?", True):
+        generate_ansible_inventory(
+            stack_name,
+            inventory_private_key=wsl_key,
+            lookup_private_key=windows_key,
+        )
+
+    root_wsl = windows_path_to_wsl(ROOT)
+    run_wsl_bash(
+        f"cd {shell_quote(root_wsl)} && "
+        "ansible-playbook -i ansible/inventaire.ini ansible/playbook.yaml"
+    )
+
+
+def generate_ansible_inventory(
+    stack_name: str,
+    inventory_private_key: str | None = None,
+    lookup_private_key: str | None = None,
+) -> None:
     if stack_name == "azure":
         ips = azure_ips_from_outputs()
     else:
-        ips = proxmox_ips_for_ansible()
+        ips = proxmox_ips_for_ansible(lookup_private_key)
 
-    private_key = ask("Cle privee SSH pour Ansible", private_key_for_stack(stack_name))
+    private_key = inventory_private_key or ask("Cle privee SSH pour Ansible", private_key_for_stack(stack_name))
     write_ansible_inventory(ips, private_key)
 
 
 def run_ansible_playbook(control_os: str, stack_name: str) -> None:
-    if not ensure_ansible_supported(control_os):
+    if control_os == "windows":
+        run_ansible_playbook_wsl(stack_name)
         return
 
     install_ansible_linux()
@@ -690,6 +868,55 @@ def show_outputs(stack_name: str) -> None:
         print(f"{name}: {data.get('value')}")
 
 
+def choose_stack() -> str | None:
+    while True:
+        info("Choix de la stack")
+        print("1. Azure")
+        print("2. Proxmox")
+        print("0. retour/quitter")
+        choice = ask("Choix")
+
+        if is_exit_choice(choice):
+            return None
+        if choice == "1":
+            return "azure"
+        if choice == "2":
+            return "proxmox"
+        print("Choix invalide.")
+
+def automatic_workflow(control_os: str, stack_name: str) -> None:
+    info("Parcours automatique")
+    print("L'assistant va derouler les etapes dans le bon ordre selon tes choix.")
+
+    if stack_name == "proxmox" and ask_yes_no("Preparer le Proxmox avant Terraform ?", True):
+        prepare_proxmox()
+
+    if ask_yes_no("Lancer terraform init ?", True):
+        terraform(stack_name, "init")
+
+    if ask_yes_no("Lancer terraform validate ?", True):
+        terraform(stack_name, "validate")
+
+    if ask_yes_no("Lancer terraform plan ?", True):
+        terraform(stack_name, "plan")
+
+    applied = False
+    if ask_yes_no("Appliquer Terraform maintenant avec auto-approve ?", True):
+        terraform(stack_name, "apply-auto")
+        applied = True
+
+    if stack_name == "proxmox":
+        if ask_yes_no("Retrouver et afficher les IP des VM ?", True):
+            find_proxmox_ips()
+    elif applied or ask_yes_no("Afficher les outputs Terraform ?", True):
+        show_outputs(stack_name)
+
+    if ANSIBLE_PLAYBOOK.exists() and ask_yes_no("Generer l'inventaire et lancer Ansible ?", True):
+        run_ansible_playbook(control_os, stack_name)
+
+    info("Parcours termine")
+
+
 def stack_menu(stack_name: str, control_os: str) -> None:
     while True:
         info(f"Stack {stack_name}")
@@ -705,6 +932,7 @@ def stack_menu(stack_name: str, control_os: str) -> None:
         if stack_name == "proxmox":
             print("10. preparer Proxmox")
             print("11. retrouver les IP des VM")
+        print("12. parcours automatique")
         print("0. retour")
         choice = ask("Choix")
 
@@ -721,18 +949,18 @@ def stack_menu(stack_name: str, control_os: str) -> None:
         elif choice == "6":
             show_outputs(stack_name)
         elif choice == "7":
-            if ensure_ansible_supported(control_os):
-                generate_ansible_inventory(stack_name)
+            generate_ansible_inventory_for_control(control_os, stack_name)
         elif choice == "8":
-            if ensure_ansible_supported(control_os):
-                install_ansible_linux()
+            install_or_check_ansible(control_os)
         elif choice == "9":
             run_ansible_playbook(control_os, stack_name)
         elif stack_name == "proxmox" and choice == "10":
             prepare_proxmox()
         elif stack_name == "proxmox" and choice == "11":
             find_proxmox_ips()
-        elif choice == "0":
+        elif choice == "12":
+            automatic_workflow(control_os, stack_name)
+        elif is_exit_choice(choice):
             return
         else:
             print("Choix invalide.")
@@ -742,12 +970,21 @@ def main() -> None:
     if platform.system().lower().startswith("win"):
         os.environ.setdefault("PYTHONUTF8", "1")
 
+    auto_mode = "--auto" in sys.argv[1:] or "auto" in sys.argv[1:]
     control_os = choose_control_os()
+
+    if auto_mode:
+        stack_name = choose_stack()
+        if stack_name is None:
+            return
+        automatic_workflow(control_os, stack_name)
+        return
 
     while True:
         info("Assistant Terraform")
         print("1. Azure")
         print("2. Proxmox")
+        print("3. parcours automatique")
         print("0. quitter")
         choice = ask("Choix")
 
@@ -755,7 +992,11 @@ def main() -> None:
             stack_menu("azure", control_os)
         elif choice == "2":
             stack_menu("proxmox", control_os)
-        elif choice == "0":
+        elif choice == "3":
+            stack_name = choose_stack()
+            if stack_name is not None:
+                automatic_workflow(control_os, stack_name)
+        elif is_exit_choice(choice):
             return
         else:
             print("Choix invalide.")
