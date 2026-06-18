@@ -68,10 +68,6 @@ resource "proxmox_virtual_environment_vm" "vm" {
     }
   }
 
-  custom_data = base64encode(templatefile("${path.module}/cloud-init-web.yml", {
-    ssh_public_key = file(pathexpand(var.ssh_public_key_path))
-  }))
-
   user_data_file_id = "local:./cloud-init/web.yaml"
   boot_order = ["scsi0"]
   bios = "ovmf"
