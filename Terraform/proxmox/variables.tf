@@ -14,10 +14,6 @@ variable "target_node" {
   default = "pve03"
 }
 
-variable "template_name" {
-  default = "ynov-debian13-template"
-}
-
 variable "cores" {
   default = 2
 }

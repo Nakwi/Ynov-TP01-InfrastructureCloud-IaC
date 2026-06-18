@@ -12,6 +12,9 @@ resource "proxmox_virtual_environment_vm" "vm" {
   name      = var.vmname # Nom de la nouvelle VM
   node_name = var.target_node # Noeud de destination de la VM
   vm_id     = var.vmID # ID de la nouvelle VM
+  boot_order = ["scsi0"]
+  bios = "ovmf"
+  machine = "q35"
 
   clone {
     vm_id   = 8004 #ID de la template
@@ -60,6 +63,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
 
   initialization {
     datastore_id = "local-zfs"
+    user_data_file_id = "local:snippets/ynov-web.yaml"
     ip_config {
       ipv4 {
         address = var.vmIP   # format attendu : "192.168.1.10/24"
@@ -67,9 +71,4 @@ resource "proxmox_virtual_environment_vm" "vm" {
       }
     }
   }
-
-  user_data_file_id = "local:snippets/ynov-web.yaml"
-  boot_order = ["scsi0"]
-  bios = "ovmf"
-  machine = "q35"
 }
