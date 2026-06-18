@@ -1,0 +1,13 @@
+- name: Configurer la VM web
+  hosts: web
+  become: true
+  tasks:
+    - name: Charger les tâches web
+      include_tasks: roles/web/tasks/role_web.yaml
+
+- name: Configurer la VM monitoring
+  hosts: monitoring
+  become: true
+  tasks:
+    - name: Charger les tâches monitoring
+      include_tasks: roles/monitoring/tasks/role_monitoring.yaml

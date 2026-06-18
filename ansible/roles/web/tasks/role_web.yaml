@@ -1,0 +1,20 @@
+- name: Configurer la page d'accueil Nginx
+  copy:
+    dest: /var/www/html/index.html
+    content: |
+      <html>
+        <body>
+          <h1>Serveur Web configure avec Ansible</h1>
+          <p>Nginx a ete installe par cloud-init.</p>
+          <p>La configuration a ete appliquee par Ansible.</p>
+        </body>
+      </html>
+    owner: www-data
+    group: www-data
+    mode: '0644'
+
+- name: Vérifier que Nginx est actif
+  service:
+    name: nginx
+    state: started
+    enabled: true
