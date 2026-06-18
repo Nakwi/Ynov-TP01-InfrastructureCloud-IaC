@@ -4,9 +4,9 @@
     content: |
       <html>
         <body>
-          <h1>Serveur Web configuré avec Ansible</h1>
-          <p>Nginx a été installé par cloud-init.</p>
-          <p>La configuration a été appliquée par Ansible.</p>
+          <h1>Serveur Web configure avec Ansible</h1>
+          <p>Nginx a ete installe par cloud-init.</p>
+          <p>La configuration a ete appliquee par Ansible.</p>
         </body>
       </html>
     owner: www-data
