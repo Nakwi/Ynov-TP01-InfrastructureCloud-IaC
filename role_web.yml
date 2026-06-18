@@ -1,13 +1,3 @@
-- name: Vérifier que cloud-init web est terminé
-  stat:
-    path: /opt/cloud-init-web-ok
-  register: cloudinit_web
-
-- name: Arrêter si cloud-init web n'est pas terminé
-  fail:
-    msg: "Cloud-init n'est pas encore terminé sur la VM web."
-  when: not cloudinit_web.stat.exists
-
 - name: Configurer la page d'accueil Nginx
   copy:
     dest: /var/www/html/index.html
