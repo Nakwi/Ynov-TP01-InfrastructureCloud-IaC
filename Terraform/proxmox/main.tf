@@ -1,3 +1,13 @@
+resource "proxmox_virtual_environment_file" "cloud_init" {
+  content_type = "snippets"
+  datastore_id = "local"
+  node_name    = var.target_node
+
+  source_file {
+    path = "./cloud-init/web.yaml"
+  }
+}
+
 resource "proxmox_virtual_environment_vm" "vm" {
   name      = var.vmname # Nom de la nouvelle VM
   node_name = var.target_node # Noeud de destination de la VM
@@ -56,13 +66,13 @@ resource "proxmox_virtual_environment_vm" "vm" {
         gateway = var.vmGW
       }
     }
-    user_account {
-      username = "debian"
-      keys     = [var.ssh_public_key]
-    }
-    user_data_file_id = "local:./cloud-init/web.yaml"
   }
 
+  custom_data = base64encode(templatefile("${path.module}/cloud-init-web.yml", {
+    ssh_public_key = file(pathexpand(var.ssh_public_key_path))
+  }))
+
+  user_data_file_id = "local:./cloud-init/web.yaml"
   boot_order = ["scsi0"]
   bios = "ovmf"
   machine = "q35"
