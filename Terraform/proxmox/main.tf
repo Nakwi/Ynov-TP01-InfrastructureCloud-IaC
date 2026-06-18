@@ -57,7 +57,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
     user_data_file_id = "local:snippets/ynov-web.yaml"
     dns {
         domain  = "local"
-        servers = "192.168.77.250"
+        servers = ["192.168.77.250"]
     }
     ip_config {
       ipv4 {
