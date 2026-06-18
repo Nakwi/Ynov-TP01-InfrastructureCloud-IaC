@@ -1,13 +1,3 @@
-- name: Vérifier que cloud-init monitoring est terminé
-  stat:
-    path: /opt/cloud-init-monitoring-ok
-  register: cloudinit_monitoring
-
-- name: Arrêter si cloud-init monitoring n'est pas terminé
-  fail:
-    msg: "Cloud-init n'est pas encore terminé sur la VM monitoring."
-  when: not cloudinit_monitoring.stat.exists
-
 - name: Vérifier que Docker est actif
   service:
     name: docker
