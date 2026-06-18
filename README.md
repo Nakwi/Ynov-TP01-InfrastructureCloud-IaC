@@ -17,4 +17,6 @@ Ansible - arboresence a réaliser
 ```
 
 commande a executer : 
-ansible-playbook -i inventaire.ini playbook.yml
+ansible-playbook -i inventaire.ini playbook.yaml
+
+chmod 600 /root/.ssh/tp_azure_ed25519
