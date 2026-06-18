@@ -17,6 +17,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,26 @@ WSL_DISTRO = "Debian"
 
 def info(message: str) -> None:
     print(f"\n== {message} ==")
+
+
+WSL_INSTALL_MESSAGE = (
+    "Debian WSL2 vient d'etre lance en installation.\n"
+    "1. Si Windows le demande, redemarre le PC.\n"
+    "2. Ouvre Debian depuis le menu Demarrer.\n"
+    "3. Cree l'utilisateur Linux et son mot de passe.\n"
+    "4. Relance l'assistant, puis relance l'installation Ansible."
+)
+
+WSL_INIT_MESSAGE = (
+    "Debian WSL est installe mais pas encore initialise.\n"
+    "Ouvre Debian depuis le menu Demarrer, cree l'utilisateur Linux, puis relance ce bouton."
+)
+
+WSL_VIRTUALIZATION_MESSAGE = (
+    "WSL2 ne peut pas demarrer car la virtualisation est desactivee dans le BIOS/UEFI.\n"
+    "Sur un CPU AMD, active l'option SVM Mode / AMD-V dans le BIOS, sauvegarde, puis redemarre Windows.\n"
+    "Ensuite relance l'assistant et relance l'installation Ansible."
+)
 
 
 def ask(prompt: str, default: str | None = None) -> str:
@@ -142,40 +163,64 @@ def wsl_distros() -> list[str]:
     return [line.strip() for line in output.splitlines() if line.strip()]
 
 
+def start_debian_wsl_install() -> None:
+    run([
+        "powershell",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -ExecutionPolicy Bypass -Command \"wsl --install --no-distribution; wsl --set-default-version 2; wsl --install -d Debian; Read-Host ''Appuie sur Entree pour fermer''\"'",
+    ])
+
+
+def virtualization_firmware_enabled() -> bool | None:
+    if not platform.system().lower().startswith("win"):
+        return None
+
+    result = run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            "(Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty VirtualizationFirmwareEnabled)",
+        ],
+        check=False,
+        capture=True,
+        echo_output=False,
+    )
+    text = ((result.stdout or "") + (result.stderr or "")).strip().lower()
+    if "false" in text:
+        return False
+    if "true" in text:
+        return True
+    return None
+
+
 def ensure_wsl_debian() -> None:
+    if virtualization_firmware_enabled() is False:
+        raise RuntimeError(WSL_VIRTUALIZATION_MESSAGE)
+
     if not has_command("wsl"):
         print("WSL n'est pas detecte sur ce Windows.")
         if ask_yes_no("Essayer d'installer WSL2 avec Debian maintenant ?", True):
             print("Une fenetre PowerShell admin peut s'ouvrir. Accepte l'UAC si Windows le demande.")
-            run([
-                "powershell",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -ExecutionPolicy Bypass -Command \"wsl --install -d Debian; Read-Host ''Appuie sur Entree pour fermer''\"'",
-            ])
-            raise RuntimeError(
-                "Relance l'assistant apres l'installation de Debian WSL, et apres redemarrage Windows si demande."
-            )
+            start_debian_wsl_install()
+            raise RuntimeError(WSL_INSTALL_MESSAGE)
         raise RuntimeError("WSL2 + Debian est requis pour lancer Ansible depuis Windows.")
 
     distros = wsl_distros()
     if WSL_DISTRO not in distros:
         print(f"{WSL_DISTRO} WSL n'est pas installe.")
         if ask_yes_no(f"Installer {WSL_DISTRO} avec WSL maintenant ?", True):
-            run(["wsl", "--install", "-d", WSL_DISTRO])
-            raise RuntimeError(
-                "Relance l'assistant apres l'installation de Debian WSL, et apres redemarrage Windows si demande."
-            )
+            start_debian_wsl_install()
+            raise RuntimeError(WSL_INSTALL_MESSAGE)
         else:
             raise RuntimeError(f"{WSL_DISTRO} WSL absent.")
 
     probe = run_wsl_bash("echo ok", check=False, capture=True, echo_output=False)
     if probe.returncode != 0:
-        raise RuntimeError(
-            "Debian WSL n'est pas encore pret. Ouvre Debian une premiere fois, cree l'utilisateur Linux, puis relance."
-        )
+        raise RuntimeError(WSL_INIT_MESSAGE)
 
 def prepare_wsl_ssh_key(private_key: str) -> str:
     key = expand_user(private_key)
@@ -301,6 +346,16 @@ def terraform_outputs(stack_name: str) -> dict[str, Any]:
     return json.loads(result.stdout)
 
 
+def detect_public_ip_cidr() -> str:
+    try:
+        with urllib.request.urlopen("https://api.ipify.org", timeout=8) as response:
+            ip = response.read().decode("utf-8").strip()
+        ipaddress.ip_address(ip)
+        return f"{ip}/32"
+    except Exception:
+        return ""
+
+
 def choose_control_os() -> str:
     detected = "windows" if platform.system().lower().startswith("win") else "linux"
     while True:
@@ -324,6 +379,163 @@ def ensure_ssh_key(private_key: str) -> None:
         return
 
     run(["ssh-keygen", "-t", "ed25519", "-f", str(key), "-C", "tp-proxmox", "-N", ""])
+
+
+def ensure_azure_ssh_key(public_key_path: str) -> None:
+    require_command("ssh-keygen")
+    public_key = expand_user(public_key_path)
+    private_key = Path(str(public_key)[:-4]) if str(public_key).endswith(".pub") else public_key
+    real_public_key = Path(str(private_key) + ".pub")
+    private_key.parent.mkdir(parents=True, exist_ok=True)
+
+    if private_key.exists() and real_public_key.exists():
+        print(f"Cle SSH Azure deja presente: {real_public_key}")
+        return
+
+    run(["ssh-keygen", "-t", "ed25519", "-f", str(private_key), "-C", "tp-azure", "-N", ""])
+
+
+def azure_cli_windows_path() -> str | None:
+    path = shutil.which("az")
+    if path:
+        path_obj = Path(path)
+        if path_obj.suffix.lower() in (".cmd", ".bat", ".exe"):
+            return path
+        cmd_path = Path(str(path_obj) + ".cmd")
+        if cmd_path.exists():
+            return str(cmd_path)
+
+    cmd = shutil.which("az.cmd")
+    if cmd:
+        return cmd
+
+    bat = shutil.which("az.bat")
+    if bat:
+        return bat
+
+    exe = shutil.which("az.exe")
+    if exe:
+        return exe
+
+    if path:
+        return path
+
+    for candidate in (
+        Path(r"C:\Program Files (x86)\Microsoft SDKs\Azure\CLI2\wbin\az.cmd"),
+        Path(r"C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin\az.cmd"),
+    ):
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+def install_or_check_azure_cli_windows() -> str:
+    az = azure_cli_windows_path()
+    if az:
+        print("Azure CLI est deja installe.")
+        run([az, "version"], check=False)
+        return az
+
+    if not has_command("winget"):
+        raise RuntimeError("Azure CLI est absent et winget est introuvable.")
+
+    if not ask_yes_no("Azure CLI est absent. L'installer via winget maintenant ?", True):
+        raise RuntimeError("Azure CLI absent.")
+
+    run([
+        "winget",
+        "install",
+        "-e",
+        "--id",
+        "Microsoft.AzureCLI",
+        "--accept-package-agreements",
+        "--accept-source-agreements",
+    ])
+    az = azure_cli_windows_path()
+    if not az:
+        raise RuntimeError("Azure CLI semble installe, mais pas encore visible. Relance le terminal.")
+    return az
+
+
+def install_or_check_azure_cli_wsl_debian() -> None:
+    ensure_wsl_debian()
+    run_wsl_bash(
+        "set -e; "
+        "if command -v az >/dev/null 2>&1; then az version; "
+        "else sudo apt-get update && sudo apt-get install -y curl ca-certificates gnupg "
+        "&& curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash; fi"
+    )
+
+
+def install_or_check_azure_cli_linux() -> None:
+    if has_command("az"):
+        print("Azure CLI est deja installe.")
+        run(["az", "version"], check=False)
+        return
+
+    if not ask_yes_no("Azure CLI est absent. L'installer sur ce Linux maintenant ?", True):
+        raise RuntimeError("Azure CLI absent.")
+
+    if has_command("apt-get"):
+        command = (
+            "sudo apt-get update && "
+            "sudo apt-get install -y curl ca-certificates gnupg && "
+            "curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash"
+        )
+        run(["bash", "-lc", command])
+        return
+
+    raise RuntimeError("Distribution non geree automatiquement pour Azure CLI.")
+
+
+def azure_login_and_subscription(control_os: str) -> str:
+    if control_os == "windows":
+        az = install_or_check_azure_cli_windows()
+        run([az, "login", "--use-device-code"])
+        return run_capture([az, "account", "show", "--query", "id", "-o", "tsv"], check=False)
+
+    if platform.system().lower().startswith("win"):
+        install_or_check_azure_cli_wsl_debian()
+        run_wsl_bash("az login --use-device-code")
+        result = run_wsl_bash("az account show --query id -o tsv", check=False, capture=True)
+        return (result.stdout or "").strip()
+
+    install_or_check_azure_cli_linux()
+    run(["az", "login", "--use-device-code"])
+    return run_capture(["az", "account", "show", "--query", "id", "-o", "tsv"], check=False)
+
+
+def prepare_azure(control_os: str) -> None:
+    stack = STACKS["azure"]
+    subscription_id = ask("Subscription ID Azure", get_tfvar(stack, "subscription_id", ""))
+    project_name = ask("Nom du projet", get_tfvar(stack, "project_name", "tp-cloud"))
+    location = ask("Region Azure", get_tfvar(stack, "location", "spaincentral"))
+    admin_username = ask("Utilisateur admin des VM", get_tfvar(stack, "admin_username", "admincloud"))
+    ssh_public_key_path = ask("Chemin de la cle SSH publique", get_tfvar(stack, "ssh_public_key_path", "~/.ssh/tp_azure_ed25519.pub"))
+    detected_cidr = detect_public_ip_cidr()
+    admin_ip_cidr = ask("IP publique autorisee en SSH", get_tfvar(stack, "admin_ip_cidr", detected_cidr))
+    web_vm_size = ask("Taille VM web", get_tfvar(stack, "web_vm_size", "Standard_B2ats_v2"))
+    monitoring_vm_size = ask("Taille VM monitoring", get_tfvar(stack, "monitoring_vm_size", "Standard_B2ats_v2"))
+
+    info("SSH Azure")
+    ensure_azure_ssh_key(ssh_public_key_path)
+
+    info("Azure CLI et login")
+    detected_subscription = azure_login_and_subscription(control_os)
+    if not subscription_id and detected_subscription:
+        subscription_id = detected_subscription.strip()
+        print(f"Subscription detectee: {subscription_id}")
+
+    info("Mise a jour azure/terraform.tfvars")
+    set_tfvar(stack, "subscription_id", subscription_id)
+    set_tfvar(stack, "project_name", project_name)
+    set_tfvar(stack, "location", location)
+    set_tfvar(stack, "admin_username", admin_username)
+    set_tfvar(stack, "ssh_public_key_path", ssh_public_key_path)
+    set_tfvar(stack, "admin_ip_cidr", admin_ip_cidr)
+    set_tfvar(stack, "web_vm_size", web_vm_size)
+    set_tfvar(stack, "monitoring_vm_size", monitoring_vm_size)
+    print("azure/terraform.tfvars mis a jour.")
 
 
 def install_root_key(host: str, private_key: str) -> None:
@@ -890,6 +1102,8 @@ def automatic_workflow(control_os: str, stack_name: str) -> None:
 
     if stack_name == "proxmox" and ask_yes_no("Preparer le Proxmox avant Terraform ?", True):
         prepare_proxmox()
+    elif stack_name == "azure" and ask_yes_no("Preparer Azure avant Terraform ?", True):
+        prepare_azure(control_os)
 
     if ask_yes_no("Lancer terraform init ?", True):
         terraform(stack_name, "init")
@@ -929,6 +1143,8 @@ def stack_menu(stack_name: str, control_os: str) -> None:
         print("7. generer inventaire Ansible")
         print("8. installer/verifier Ansible")
         print("9. lancer playbook Ansible")
+        if stack_name == "azure":
+            print("10. preparer Azure")
         if stack_name == "proxmox":
             print("10. preparer Proxmox")
             print("11. retrouver les IP des VM")
@@ -954,6 +1170,8 @@ def stack_menu(stack_name: str, control_os: str) -> None:
             install_or_check_ansible(control_os)
         elif choice == "9":
             run_ansible_playbook(control_os, stack_name)
+        elif stack_name == "azure" and choice == "10":
+            prepare_azure(control_os)
         elif stack_name == "proxmox" and choice == "10":
             prepare_proxmox()
         elif stack_name == "proxmox" and choice == "11":
