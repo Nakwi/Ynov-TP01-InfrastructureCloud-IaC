@@ -373,4 +373,4 @@ ansible-playbook -i inventaire.ini playbook.yaml
 
 ## Auteurs
 
-OSOH Tech : Ryan Corsyn, Norman Skovgaard, Angelo Vazquez, Matteo Panariello.
+OSOH Tech : Ryan Corsyn, Norman Skovgaard, Angelo Vazquez, Matteo Panariello
