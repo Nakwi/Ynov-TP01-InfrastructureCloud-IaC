@@ -20,10 +20,12 @@ Quatre briques se passent le relais : **cloud-init** (amorçage), **Terraform** 
 
 ## Démonstrations
  
-Deux vidéos montrent un déploiement complet de bout en bout :
+Deux vidéos montrent un déploiement complet de bout en bout (clique sur une miniature) :
  
-- **Démo Azure** : https://youtu.be/wgGb3_AWmtE
-- **Démo Proxmox** : https://youtu.be/dpfslmvEur4
+| Démo Azure | Démo Proxmox |
+| :--------: | :----------: |
+| [![Démo Azure](https://i.goopics.net/gjuvsv.png)](https://youtu.be/wgGb3_AWmtE) | [![Démo Proxmox](https://i.goopics.net/cduxgx.png)](https://youtu.be/dpfslmvEur4) |
+
 
 
 ## Vue d'ensemble : comment tout fonctionne ensemble
