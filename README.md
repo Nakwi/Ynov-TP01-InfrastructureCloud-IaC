@@ -18,6 +18,14 @@ python3 ./terraform_assistant.py
 Quatre briques se passent le relais : **cloud-init** (amorçage), **Terraform** (provisionnement),
 **Ansible** (configuration), le tout piloté par le **script Python**.
 
+## Démonstrations
+ 
+Deux vidéos montrent un déploiement complet de bout en bout :
+ 
+- **Démo Azure** : https://youtu.be/wgGb3_AWmtE
+- **Démo Proxmox** : https://youtu.be/dpfslmvEur4
+
+
 ## Vue d'ensemble : comment tout fonctionne ensemble
 
 | Machine | Rôle | Service | Exposition |
