@@ -43,16 +43,6 @@ def ask(prompt: str, default: str | None = None) -> str:
     return value or (default or "")
 
 
-def ask_yes_no(prompt: str, default: bool = False) -> bool:
-    # Question oui/non simple.
-    # On accepte aussi "o" pour oui en francais.
-    suffix = "[Y/n]" if default else "[y/N]"
-    value = ask(f"{prompt} {suffix}").lower()
-    if not value:
-        return default
-    return value.startswith(("y", "o"))
-
-
 # -----------------------------
 # Commandes locales
 # -----------------------------
@@ -328,11 +318,6 @@ def terraform_cmd(stack: str, command: str) -> None:
     # Exemple: stack="proxmox", command="plan" -> terraform plan dans Proxmox/
     require_command("terraform")
     cwd = STACKS[stack]
-
-    if command == "apply" and ask_yes_no("Utiliser -auto-approve ?", False):
-        run(["terraform", "apply", "-auto-approve"], cwd=cwd)
-        return
-
     run(["terraform", command], cwd=cwd)
 
 
