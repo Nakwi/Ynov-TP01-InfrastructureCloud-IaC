@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +65,12 @@ def has_command(name: str) -> bool:
     # Version simple de require_command.
     # Elle renvoie True/False au lieu de bloquer le script.
     return shutil.which(name) is not None
+
+
+def command_path(name: str) -> str:
+    # Sur Windows, certaines commandes sont des .CMD.
+    # Avec subprocess, utiliser le chemin complet evite les erreurs.
+    return shutil.which(name) or name
 
 
 def run(
@@ -329,6 +336,128 @@ def prepare_proxmox() -> None:
         set_tfvar("proxmox", name, value)
 
     print("Proxmox/terraform.tfvars mis a jour.")
+
+
+# -----------------------------
+# Preparation Azure
+# -----------------------------
+
+def yes(value: str) -> bool:
+    # Accepte les reponses francaises et anglaises les plus courantes.
+    return value.lower() in ("o", "oui", "y", "yes")
+
+
+def public_ip_cidr() -> str:
+    # Recupere l'IP publique du poste pour ouvrir SSH seulement depuis cette IP.
+    try:
+        with urllib.request.urlopen("https://api.ipify.org", timeout=10) as response:
+            ip = response.read().decode("utf-8").strip()
+            return f"{ip}/32"
+    except Exception:
+        return ""
+
+
+def install_azure_cli(local_os: str) -> None:
+    # Installe Azure CLI si possible.
+    # Windows: winget.
+    # Linux Debian/Ubuntu: script officiel Microsoft via curl.
+    if has_command("az"):
+        print("Azure CLI est deja installe.")
+        run([command_path("az"), "version"], capture=True)
+        return
+
+    if not yes(ask("Azure CLI introuvable. Installer maintenant ? (o/n)", "o")):
+        raise RuntimeError("Azure CLI est necessaire pour preparer Azure.")
+
+    if local_os == "windows":
+        require_command("winget")
+        run(
+            [
+                "winget",
+                "install",
+                "--id",
+                "Microsoft.AzureCLI",
+                "--exact",
+                "--accept-source-agreements",
+                "--accept-package-agreements",
+            ]
+        )
+    else:
+        require_command("bash")
+        require_command("curl")
+        install_command = "curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash"
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            install_command = "curl -sL https://aka.ms/InstallAzureCLIDeb | bash"
+        run(["bash", "-lc", install_command])
+
+    require_command("az")
+    run([command_path("az"), "version"], capture=True)
+
+
+def azure_subscription_id() -> str:
+    # Retourne l'abonnement Azure actif si la personne est deja connectee.
+    return run(
+        [command_path("az"), "account", "show", "--query", "id", "-o", "tsv"],
+        check=False,
+        capture=True,
+        show_output=False,
+    ).strip()
+
+
+def azure_login() -> str:
+    # Connexion Azure en mode device code, pratique dans un terminal.
+    # Cela evite l'ouverture automatique d'une page de login.
+    run([command_path("az"), "login", "--use-device-code"])
+    return azure_subscription_id()
+
+
+def prepare_azure(local_os: str) -> None:
+    # Parcours complet de preparation Azure.
+    # Il remplit ensuite azure/terraform.tfvars pour Terraform.
+    info("SSH")
+    private_key = ask("Cle SSH privee locale", private_key_for_stack("azure"))
+    ensure_ssh_key(private_key)
+
+    info("Azure CLI")
+    install_azure_cli(local_os)
+
+    info("Connexion Azure")
+    current_subscription = azure_subscription_id()
+    if not current_subscription or yes(ask("Lancer az login --use-device-code ? (o/n)", "o")):
+        current_subscription = azure_login()
+
+    subscription_id = ask(
+        "Subscription ID Azure",
+        get_tfvar("azure", "subscription_id", current_subscription),
+    )
+    if not subscription_id:
+        raise RuntimeError("subscription_id est obligatoire pour Terraform Azure.")
+
+    run([command_path("az"), "account", "set", "--subscription", subscription_id])
+
+    info("Parametres Terraform Azure")
+    project_name = ask("Nom du projet", get_tfvar("azure", "project_name", "tp-cloud"))
+    location = ask("Region Azure", get_tfvar("azure", "location", "spaincentral"))
+    admin_user = ask("Utilisateur admin des VM", get_tfvar("azure", "admin_username", ADMIN_USER))
+    detected_ip = public_ip_cidr()
+    admin_ip = ask("IP publique autorisee en SSH", get_tfvar("azure", "admin_ip_cidr", detected_ip))
+
+    if not admin_ip:
+        raise RuntimeError("admin_ip_cidr est obligatoire. Exemple: 1.2.3.4/32")
+
+    values: dict[str, str] = {
+        "subscription_id": subscription_id,
+        "project_name": project_name,
+        "location": location,
+        "admin_username": admin_user,
+        "ssh_public_key_path": f"{private_key}.pub",
+        "admin_ip_cidr": admin_ip,
+    }
+
+    for name, value in values.items():
+        set_tfvar("azure", name, value)
+
+    print("azure/terraform.tfvars mis a jour.")
 
 
 def terraform_cmd(stack: str, command: str) -> None:
@@ -719,13 +848,16 @@ def stack_menu(stack: str, local_os: str) -> None:
         "4": ("terraform apply", lambda: terraform_cmd(stack, "apply")),
     }
 
+    if stack == "azure":
+        add_action(actions, "preparer Azure", lambda: prepare_azure(local_os))
+
+    if stack == "proxmox":
+        add_action(actions, "preparer Proxmox", prepare_proxmox)
+
     if local_os == "linux":
         add_action(actions, "generer inventaire Ansible", lambda: write_ansible_inventory(stack))
         add_action(actions, "installer/verifier Ansible", install_ansible_linux)
         add_action(actions, "lancer playbook Ansible", lambda: run_ansible_playbook(stack))
-
-    if stack == "proxmox":
-        add_action(actions, "preparer Proxmox", prepare_proxmox)
 
     while True:
         info(f"Stack {stack}")
