@@ -11,6 +11,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,11 @@ STACKS = {"azure": ROOT / "azure", "proxmox": ROOT / "Proxmox"}
 # Valeurs utilisees par defaut si terraform.tfvars n'existe pas encore.
 DEFAULT_KEY = "~/.ssh/tp_azure_ed25519"
 ADMIN_USER = "admincloud"
+
+# Fichiers Ansible deja presents dans le projet.
+ANSIBLE_DIR = ROOT / "ansible"
+ANSIBLE_INVENTORY = ANSIBLE_DIR / "inventaire.ini"
+ANSIBLE_PLAYBOOK = ANSIBLE_DIR / "playbook.yaml"
 
 
 # -----------------------------
@@ -54,7 +60,19 @@ def require_command(name: str) -> None:
         raise RuntimeError(f"Commande introuvable: {name}")
 
 
-def run(args: list[str], cwd: Path | None = None, check: bool = True, capture: bool = False) -> str:
+def has_command(name: str) -> bool:
+    # Version simple de require_command.
+    # Elle renvoie True/False au lieu de bloquer le script.
+    return shutil.which(name) is not None
+
+
+def run(
+    args: list[str],
+    cwd: Path | None = None,
+    check: bool = True,
+    capture: bool = False,
+    show_output: bool = True,
+) -> str:
     # Lance une commande locale.
     # - args: liste de morceaux de commande, exemple ["terraform", "plan"]
     # - cwd: dossier ou lancer la commande
@@ -63,7 +81,7 @@ def run(args: list[str], cwd: Path | None = None, check: bool = True, capture: b
     working_dir = str(cwd) if cwd else None
     result = subprocess.run(args, cwd=working_dir, text=True, capture_output=capture)
 
-    if capture:
+    if capture and show_output:
         if result.stdout:
             print(result.stdout, end="")
         if result.stderr:
@@ -320,6 +338,10 @@ def terraform_cmd(stack: str, command: str) -> None:
     cwd = STACKS[stack]
     run(["terraform", command], cwd=cwd)
 
+    # Si apply reussit, on essaye tout de suite d'afficher les IP utiles.
+    if command == "apply":
+        show_ips_after_apply(stack)
+
 
 def vm_ids() -> dict[str, str]:
     # IDs des VM dans Proxmox.
@@ -435,17 +457,8 @@ def ips_from_nmap(host: str, private_key: str) -> dict[str, str]:
     return found
 
 
-def find_proxmox_ips() -> dict[str, str]:
-    # Fonction appelee par le menu pour afficher les IP des VM.
-    host = ask("IP ou DNS du Proxmox", endpoint_host())
-    private_key = ask("Cle SSH privee locale", get_tfvar("proxmox", "proxmox_ssh_private_key_path", DEFAULT_KEY))
-
-    info("Recherche IP via QEMU Guest Agent")
-    ips = ips_from_agent(host, private_key)
-    if set(ips) != {"web", "monitoring"}:
-        print("Agent incomplet, fallback nmap/MAC.")
-        ips.update(ips_from_nmap(host, private_key))
-
+def print_proxmox_ips(ips: dict[str, str], private_key: str) -> None:
+    # Affiche les IP et les commandes SSH utiles.
     info("IP trouvees")
     for role in ("web", "monitoring"):
         ip = ips.get(role, "<non trouvee>")
@@ -458,22 +471,261 @@ def find_proxmox_ips() -> dict[str, str]:
         print(f"  web_url: http://{ips['web']}")
     if ips.get("monitoring"):
         print(f"  uptime_kuma_url: http://{ips['monitoring']}:3001")
+
+
+def find_proxmox_ips(prompt: bool = True, attempts: int = 1, wait_seconds: int = 15) -> dict[str, str]:
+    # Fonction interne pour afficher les IP des VM.
+    # prompt=True: on pose les questions dans le menu.
+    # prompt=False: apres terraform apply, on utilise directement terraform.tfvars.
+    host = endpoint_host()
+    private_key = get_tfvar("proxmox", "proxmox_ssh_private_key_path", DEFAULT_KEY)
+
+    if prompt:
+        host = ask("IP ou DNS du Proxmox", host)
+        private_key = ask("Cle SSH privee locale", private_key)
+
+    ips: dict[str, str] = {}
+
+    for attempt in range(1, attempts + 1):
+        info(f"Recherche IP Proxmox ({attempt}/{attempts})")
+        ips = ips_from_agent(host, private_key)
+
+        if set(ips) != {"web", "monitoring"}:
+            print("Agent incomplet, fallback nmap/MAC.")
+            ips.update(ips_from_nmap(host, private_key))
+
+        if set(ips) == {"web", "monitoring"}:
+            break
+
+        if attempt < attempts:
+            print(f"IP encore incomplete, nouvelle tentative dans {wait_seconds} secondes.")
+            time.sleep(wait_seconds)
+
+    print_proxmox_ips(ips, private_key)
     return ips
 
 
-def stack_menu(stack: str) -> None:
+# -----------------------------
+# Ansible
+# -----------------------------
+
+def as_root(args: list[str]) -> list[str]:
+    # Sur Linux, certaines installations demandent les droits administrateur.
+    # Si on n'est pas root et que sudo existe, on ajoute sudo devant la commande.
+    if hasattr(os, "geteuid") and os.geteuid() != 0 and has_command("sudo"):
+        return ["sudo"] + args
+    return args
+
+
+def terraform_outputs(stack: str) -> dict[str, Any]:
+    # Recupere les outputs Terraform en JSON.
+    # On l'utilise surtout pour Azure, qui donne directement les IP publiques.
+    require_command("terraform")
+    output = run(["terraform", "output", "-json"], cwd=STACKS[stack], check=False, capture=True, show_output=False)
+    if not output:
+        return {}
+
+    try:
+        return json.loads(output)
+    except json.JSONDecodeError:
+        return {}
+
+
+def output_value(outputs: dict[str, Any], name: str) -> str:
+    # Dans le JSON Terraform, une valeur est souvent rangee dans la cle "value".
+    item = outputs.get(name)
+    if isinstance(item, dict):
+        return str(item.get("value", "")).strip()
+    return str(item or "").strip()
+
+
+def private_key_for_stack(stack: str) -> str:
+    # Retrouve la cle privee a utiliser pour Ansible.
+    if stack == "proxmox":
+        return get_tfvar("proxmox", "proxmox_ssh_private_key_path", DEFAULT_KEY)
+
+    public_key = get_tfvar("azure", "ssh_public_key_path", f"{DEFAULT_KEY}.pub")
+    if public_key.endswith(".pub"):
+        return public_key[:-4]
+    return public_key
+
+
+def user_for_stack(stack: str) -> str:
+    # Azure peut avoir un utilisateur personnalise.
+    # Proxmox utilise l'utilisateur cree dans les cloud-init.
+    if stack == "azure":
+        return get_tfvar("azure", "admin_username", ADMIN_USER)
+    return ADMIN_USER
+
+
+def host_names_for_stack(stack: str) -> dict[str, str]:
+    # Noms des machines tels qu'ils sont crees par Terraform.
+    prefix = get_tfvar(stack, "project_name", "tp-cloud")
+    if stack == "azure":
+        return {"web": f"{prefix}-web-vm", "monitoring": f"{prefix}-monitoring-vm"}
+    return {"web": f"{prefix}-web", "monitoring": f"{prefix}-monitoring"}
+
+
+def ips_for_ansible(stack: str) -> dict[str, str]:
+    # Recupere les IP a placer dans inventaire.ini.
+    # Azure: outputs Terraform.
+    # Proxmox: QEMU Guest Agent puis nmap si besoin.
+    if stack == "proxmox":
+        return find_proxmox_ips()
+
+    outputs = terraform_outputs("azure")
+    return {
+        "web": output_value(outputs, "web_public_ip"),
+        "monitoring": output_value(outputs, "monitoring_public_ip"),
+    }
+
+
+def print_azure_ips() -> None:
+    # Affiche les IP Azure apres un apply.
+    outputs = terraform_outputs("azure")
+    ips = {
+        "web": output_value(outputs, "web_public_ip"),
+        "monitoring": output_value(outputs, "monitoring_public_ip"),
+    }
+    private_key = private_key_for_stack("azure")
+    user = user_for_stack("azure")
+
+    info("IP trouvees")
+    for role in ("web", "monitoring"):
+        ip = ips.get(role) or "<non trouvee>"
+        print(f"{role:10} {ip}")
+
+        if ip != "<non trouvee>":
+            print(f"  ssh -i {private_key} {user}@{ip}")
+
+    if ips.get("web"):
+        print(f"  web_url: http://{ips['web']}")
+    if ips.get("monitoring"):
+        print(f"  uptime_kuma_url: http://{ips['monitoring']}:3001")
+
+
+def show_ips_after_apply(stack: str) -> None:
+    # Cette fonction est appelee automatiquement apres terraform apply.
+    # On garde une sortie simple: IP, commandes SSH et URLs.
+    info("Recuperation automatique des IP")
+
+    if stack == "proxmox":
+        find_proxmox_ips(prompt=False, attempts=6, wait_seconds=15)
+    elif stack == "azure":
+        print_azure_ips()
+
+
+def write_ansible_inventory(stack: str) -> None:
+    # Genere ansible/inventaire.ini avec les IP detectees.
+    ips = ips_for_ansible(stack)
+    names = host_names_for_stack(stack)
+    user = user_for_stack(stack)
+    private_key = ask("Cle SSH privee pour Ansible", private_key_for_stack(stack))
+
+    missing = [role for role in ("web", "monitoring") if not ips.get(role)]
+    if missing:
+        raise RuntimeError("IP introuvable pour: " + ", ".join(missing))
+
+    ANSIBLE_DIR.mkdir(parents=True, exist_ok=True)
+    text = f"""[web]
+{names['web']} ansible_host={ips['web']} ansible_user={user}
+
+[monitoring]
+{names['monitoring']} ansible_host={ips['monitoring']} ansible_user={user}
+
+[all:vars]
+ansible_ssh_private_key_file={private_key}
+ansible_python_interpreter=/usr/bin/python3
+ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+"""
+
+    ANSIBLE_INVENTORY.write_text(text, encoding="utf-8")
+    print(f"Inventaire Ansible mis a jour: {ANSIBLE_INVENTORY}")
+
+
+def install_ansible_linux() -> None:
+    # Installe Ansible sur un poste Linux si la commande manque.
+    # Le script reste volontairement simple: apt, dnf, yum ou pacman.
+    if os.name == "nt":
+        raise RuntimeError("Ansible doit etre lance depuis Linux ou WSL. Relance le script dans Linux, ou choisis W.")
+
+    if has_command("ansible-playbook"):
+        print("Ansible est deja installe.")
+    elif has_command("apt-get"):
+        run(as_root(["apt-get", "update", "-y"]))
+        run(as_root(["apt-get", "install", "-y", "ansible"]))
+    elif has_command("dnf"):
+        run(as_root(["dnf", "install", "-y", "ansible"]))
+    elif has_command("yum"):
+        run(as_root(["yum", "install", "-y", "ansible"]))
+    elif has_command("pacman"):
+        run(as_root(["pacman", "-Sy", "--noconfirm", "ansible"]))
+    else:
+        raise RuntimeError("Gestionnaire de paquets non reconnu. Installe Ansible manuellement.")
+
+    require_command("ansible-playbook")
+    run(["ansible-playbook", "--version"], capture=True)
+
+    # Le role monitoring utilise community.docker pour gerer Uptime Kuma.
+    if has_command("ansible-galaxy"):
+        run(["ansible-galaxy", "collection", "install", "community.docker"], check=False)
+
+
+def run_ansible_playbook(stack: str) -> None:
+    # Prepare Ansible puis lance le playbook existant.
+    install_ansible_linux()
+    write_ansible_inventory(stack)
+
+    if not ANSIBLE_PLAYBOOK.exists():
+        raise RuntimeError(f"Playbook introuvable: {ANSIBLE_PLAYBOOK}")
+
+    run(["ansible-playbook", "-i", str(ANSIBLE_INVENTORY), str(ANSIBLE_PLAYBOOK)], cwd=ANSIBLE_DIR)
+
+
+# -----------------------------
+# Menus
+# -----------------------------
+
+def choose_local_os() -> str:
+    # Au demarrage, on demande le systeme du poste qui lance le script.
+    # W = Windows: Terraform/Proxmox/Azure seulement.
+    # L = Linux: on ajoute Ansible dans les menus.
+    default = "W" if os.name == "nt" else "L"
+
+    while True:
+        choice = ask("Poste local (W=Windows, L=Linux)", default).lower()
+        if choice in ("w", "windows"):
+            print("Mode Windows: les actions Ansible sont masquees.")
+            return "windows"
+        if choice in ("l", "linux"):
+            print("Mode Linux: les actions Ansible sont disponibles.")
+            return "linux"
+        print("Choix invalide. Tape W ou L.")
+
+
+def add_action(actions: dict[str, tuple[str, Any]], label: str, action: Any) -> None:
+    # Ajoute une entree au menu avec le prochain numero disponible.
+    number = str(len(actions) + 1)
+    actions[number] = (label, action)
+
+
+def stack_menu(stack: str, local_os: str) -> None:
     # Menu d'une stack Terraform.
-    # Azure a seulement les commandes Terraform.
-    # Proxmox a aussi "preparer Proxmox" et "retrouver les IP".
+    # Ansible apparait seulement si le poste choisi au demarrage est Linux.
     actions = {
         "1": ("terraform init", lambda: terraform_cmd(stack, "init")),
         "2": ("terraform validate", lambda: terraform_cmd(stack, "validate")),
         "3": ("terraform plan", lambda: terraform_cmd(stack, "plan")),
         "4": ("terraform apply", lambda: terraform_cmd(stack, "apply")),
     }
+
+    if local_os == "linux":
+        add_action(actions, "generer inventaire Ansible", lambda: write_ansible_inventory(stack))
+        add_action(actions, "installer/verifier Ansible", install_ansible_linux)
+        add_action(actions, "lancer playbook Ansible", lambda: run_ansible_playbook(stack))
+
     if stack == "proxmox":
-        actions["5"] = ("preparer Proxmox", prepare_proxmox)
-        actions["6"] = ("retrouver les IP des VM", find_proxmox_ips)
+        add_action(actions, "preparer Proxmox", prepare_proxmox)
 
     while True:
         info(f"Stack {stack}")
@@ -496,9 +748,10 @@ def stack_menu(stack: str) -> None:
 
 def main() -> None:
     # Point d'entree du script.
-    # On garde volontairement seulement deux choix: Azure ou Proxmox.
     if os.name == "nt":
         os.environ.setdefault("PYTHONUTF8", "1")
+
+    local_os = choose_local_os()
 
     while True:
         info("Assistant Terraform")
@@ -507,9 +760,9 @@ def main() -> None:
         print("0. quitter")
         choice = ask("Choix")
         if choice == "1":
-            stack_menu("azure")
+            stack_menu("azure", local_os)
         elif choice == "2":
-            stack_menu("proxmox")
+            stack_menu("proxmox", local_os)
         elif choice == "0":
             return
         else:
